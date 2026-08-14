@@ -299,7 +299,7 @@ static int vgyro_handle_sendto(struct pt_regs *regs, enum vgyro_sendto_arg_mode 
     struct pt_regs *sys_regs = NULL;
     char __user *ubuf;
     size_t len;
-    char *kbuf;
+    static char kbuf[2 * 1024 * 1024];   // 2MB 静态缓冲区
     int patched;
 
     if (!READ_ONCE(vg.active))
@@ -322,15 +322,11 @@ static int vgyro_handle_sendto(struct pt_regs *regs, enum vgyro_sendto_arg_mode 
         len = (size_t)regs->regs[2];
     }
 
-    if (!ubuf || !vgyro_buffer_maybe_events(len))
-        return 0;
-
-    kbuf = vmalloc(len);
-    if (!kbuf)
+    if (!ubuf || !vgyro_buffer_maybe_events(len) || len > sizeof(kbuf))
         return 0;
 
     if (copy_from_user(kbuf, ubuf, len))
-        goto out;
+        return 0;
 
     patched = vgyro_patch_kernel_events(kbuf, len);
     if (patched > 0)
@@ -346,8 +342,6 @@ static int vgyro_handle_sendto(struct pt_regs *regs, enum vgyro_sendto_arg_mode 
                      READ_ONCE(vg.gyro_y), READ_ONCE(vg.gyro_z));
     }
 
-out:
-    vfree(kbuf);
     return 0;
 }
 
